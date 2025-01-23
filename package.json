@@ -1,0 +1,21 @@
+{
+  "name": "skullboard",
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "db:push": "bunx drizzle-kit push"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "@types/node": "^22.10.7"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "dotenv": "^16.4.7",
+    "drizzle-kit": "^0.30.2",
+    "drizzle-orm": "^0.38.4",
+    "seyfert": "^2.2.0"
+  }
+}
