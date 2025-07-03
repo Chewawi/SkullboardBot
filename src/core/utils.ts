@@ -3,46 +3,59 @@ import type { APIEmbed } from 'seyfert/lib/types';
 
 import { ActionRow, Formatter, Button } from 'seyfert';
 import { ButtonStyle } from 'seyfert/lib/types';
+import { Logger } from 'seyfert';
 
 import { saveSkullboardMessage } from '~/database/helpers';
 
+const LOGGER = new Logger({ name: 'utils' });
 /**
  * Creates a new skullboard message with the provided data.
  * @param skullboardChannel - The channel to send the skullboard message.
  * @param message - The message to base the skullboard message on.
+ * @param guildId
  * @param skullsCount - The initial count of skull reactions.
  */
 export async function createNewSkullboardMessage(skullboardChannel: TextGuildChannel, message: Message, guildId: string, skullsCount: number) {
-    const embed: APIEmbed = {
-        color: 0x2B2D31,
+    try {
+        LOGGER.info(`Creating new skullboard message for message ${message.id} with ${skullsCount} skulls`);
 
-        author: {
-            name: message.author.tag,
-            icon_url: message.author.avatarURL()
-        },
+        const embed: APIEmbed = {
+            color: 0x2B2D31,
 
-        description: message.content || '_ _',
+            author: {
+                name: message.author.tag,
+                icon_url: message.author.avatarURL()
+            },
 
-        ...message.attachments.length > 0 && {
-            image: { url: message.attachments[0]?.url || '' }
-        },
+            description: message.content || '_ _',
 
-        timestamp: message.createdAt.toISOString()
-    };
+            ...message.attachments.length > 0 && {
+                image: { url: message.attachments[0]?.url || '' }
+            },
 
-    const buttons = createButtons(message, guildId, skullsCount);
+            timestamp: message.createdAt.toISOString()
+        };
 
-    const skullboardMessage = await skullboardChannel.messages.write({
-        embeds: [embed],
-        components: [buttons]
-    });
-    await saveSkullboardMessage({
-        messageId: message.id,
-        channelId: message.channelId,
-        userId: message.author.id,
-        skullsCount,
-        skullboardMessageId: skullboardMessage.id
-    });
+        const buttons = createButtons(message, guildId, skullsCount);
+
+        const skullboardMessage = await skullboardChannel.messages.write({
+            embeds: [embed],
+            components: [buttons]
+        });
+
+        LOGGER.info(`Successfully created skullboard message ${skullboardMessage.id} for message ${message.id}`);
+
+        // Save the message to the database
+        await saveSkullboardMessage({
+            messageId: message.id,
+            channelId: message.channelId,
+            userId: message.author.id,
+            skullsCount,
+            skullboardMessageId: skullboardMessage.id
+        });
+    } catch (error) {
+        LOGGER.error(`Error creating skullboard message for message ${message.id}:`, error);
+    }
 }
 
 /**

@@ -1,10 +1,12 @@
 import { eq } from 'drizzle-orm';
+import { Logger } from 'seyfert';
 
 import { schema, db } from './index';
 
 export const skullboard = schema.skullboard;
 export const skullboardConfig = schema.skullboardConfig;
 
+const LOGGER = new Logger({ name: 'database' });
 /**
  * Retrieves the Skullboard configuration for a specific guild.
  * If no configuration exists, returns a default configuration.
@@ -65,7 +67,27 @@ export async function saveSkullboardMessage(data: {
     skullsCount: number;
     skullboardMessageId: string | null;
 }) {
-    await db.insert(skullboard).values(data);
+    try {
+        await db.insert(skullboard).values(data);
+        LOGGER.info(`Successfully saved message ${data.messageId} to skullboard database`);
+    } catch (error) {
+        LOGGER.error(`Error saving message ${data.messageId} to skullboard database:`, error);
+
+        // If the message already exists, try to update it instead
+        try {
+            await db.update(skullboard)
+                .set({
+                    channelId: data.channelId,
+                    userId: data.userId,
+                    skullsCount: data.skullsCount,
+                    skullboardMessageId: data.skullboardMessageId
+                })
+                .where(eq(skullboard.messageId, data.messageId));
+            LOGGER.info(`Updated existing message ${data.messageId} in skullboard database`);
+        } catch (updateError) {
+            LOGGER.error(`Error updating message ${data.messageId} in skullboard database:`, updateError);
+        }
+    }
 }
 
 /**
@@ -74,9 +96,21 @@ export async function saveSkullboardMessage(data: {
  * @param skullsCount - The updated count of skull reactions.
  */
 export async function updateSkullsCount(messageId: string, skullsCount: number) {
-    await db.update(skullboard)
-        .set({ skullsCount })
-        .where(eq(skullboard.messageId, messageId));
+    try {
+        const result = await db.update(skullboard)
+            .set({ skullsCount })
+            .where(eq(skullboard.messageId, messageId))
+            .returning();
+
+        LOGGER.info(`Updated skulls count for message ${messageId} to ${skullsCount}`);
+
+        // If no rows were affected, the message might not exist in the database yet
+        if (result.length <= 0) {
+            LOGGER.warn(`No message found with ID ${messageId} to update skulls count`);
+        }
+    } catch (error) {
+        LOGGER.error(`Error updating skulls count for message ${messageId}:`, error);
+    }
 }
 
 /**
@@ -84,6 +118,19 @@ export async function updateSkullsCount(messageId: string, skullsCount: number) 
  * @param messageId - The ID of the message to retrieve.
  */
 export async function getSkullboardMessage(messageId: string) {
-    const result = await db.select().from(skullboard).where(eq(skullboard.messageId, messageId));
-    return result.at(0) ?? null;
+    try {
+        const result = await db.select().from(skullboard).where(eq(skullboard.messageId, messageId));
+        const message = result.at(0) ?? null;
+
+        if (message) {
+            LOGGER.info(`Retrieved message ${messageId} from skullboard database`);
+        } else {
+            LOGGER.info(`No message found with ID ${messageId} in skullboard database`);
+        }
+
+        return message;
+    } catch (error) {
+        LOGGER.error(`Error retrieving message ${messageId} from skullboard database:`, error);
+        return null;
+    }
 }
