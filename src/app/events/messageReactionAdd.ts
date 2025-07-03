@@ -1,53 +1,93 @@
-import { createEvent } from "seyfert";
-import { createButtons, createNewSkullboardMessage } from "~/core/utils";
-import { getSkullboardConfig, getSkullboardMessage, updateSkullsCount } from "~/database/helpers";
+import { createEvent, Logger } from 'seyfert';
+
+import { getSkullboardMessage, getSkullboardConfig, updateSkullsCount } from '~/database/helpers';
+import { createNewSkullboardMessage, createButtons } from '~/core/utils';
+
+const LOGGER = new Logger({ name: 'messageReactionAdd' });
 
 export default createEvent({
-    data: { name: "messageReactionAdd" },
+    data: { name: 'messageReactionAdd' },
     async run(reaction, client) {
-        // Ignore bot reactions
-        if (reaction.emoji.user?.bot) return;
+        try {
+            LOGGER.info(`Processing reaction add event for message ${reaction.messageId}`);
 
-        const { messageId, guildId } = reaction;
-        if (!guildId) return;
+            if (reaction.emoji.user?.bot) {
+                return;
+            }
 
-        const config = await getSkullboardConfig(guildId);
-        if (!config.skullboardChannelId || reaction.emoji.name !== "💀") return;
+            const { messageId, guildId } = reaction;
+            if (!guildId) {
+                LOGGER.info('Skipping reaction: No guild ID');
+                return;
+            }
 
-        const skullboardChannel = await client.channels.fetch(config.skullboardChannelId);
-        if (!skullboardChannel?.isTextGuild()) return;
+            const config = await getSkullboardConfig(guildId);
+            if (!config.skullboardChannelId || reaction.emoji.name !== '💀') {
+                LOGGER.info(`Skipping reaction: No skullboard channel configured or not a skull emoji (${reaction.emoji.name || ''})`);
+                return;
+            }
 
-        const message = await client.messages.fetch(reaction.messageId, reaction.channelId);
-        const existingMessage = await getSkullboardMessage(messageId);
+            LOGGER.info(`Fetching skullboard channel ${config.skullboardChannelId}`);
+            const skullboardChannel = await client.channels.fetch(config.skullboardChannelId);
+            if (!skullboardChannel.isTextGuild()) {
+                LOGGER.info('Skipping reaction: Skullboard channel is not a text channel');
+                return;
+            }
 
-        const skullsCount = (message?.reactions?.find((e) => e.emoji.name === "💀")?.count) || 0;
+            LOGGER.info(`Fetching message ${reaction.messageId} from channel ${reaction.channelId}`);
+            const message = await client.messages.fetch(reaction.messageId, reaction.channelId);
+            const existingMessage = await getSkullboardMessage(messageId);
 
-        if (existingMessage) {
-            // Update existing skullboard message
-            if (skullsCount !== existingMessage.skullsCount) {
-                if (existingMessage.skullboardMessageId) {
+            // For new messages, the reactions array might not be properly populated
+            // If this is a skull reaction event, we know there's at least one skull
+            let skullsCount = message.reactions?.find((e) => e.emoji.name === '💀')?.count || 0;
 
-                    const skullboardMessage = await skullboardChannel.messages.fetch(existingMessage.skullboardMessageId).catch(() => null);
+            // If we're processing a skull reaction but count is 0, set it to at least 1
+            if (skullsCount === 0) {
+                LOGGER.info('Detected skull reaction event but count is 0, setting to 1');
+                skullsCount = 1;
+            }
 
-                    if (skullboardMessage) {
-                        const buttons = createButtons(message, skullsCount);
-                        await skullboardMessage.edit({
-                            components: [buttons],
+            LOGGER.info(`Message ${messageId} has ${skullsCount} skull reactions`);
+
+            if (existingMessage) {
+                LOGGER.info(`Found existing skullboard entry for message ${messageId}`);
+                // Update existing skullboard message
+                if (skullsCount !== existingMessage.skullsCount) {
+                    LOGGER.info(`Skulls count changed from ${existingMessage.skullsCount} to ${skullsCount}`);
+                    if (existingMessage.skullboardMessageId) {
+                        LOGGER.info(`Fetching skullboard message ${existingMessage.skullboardMessageId}`);
+                        const skullboardMessage = await skullboardChannel.messages.fetch(existingMessage.skullboardMessageId).catch((error: unknown) => {
+                            LOGGER.error(`Error fetching skullboard message ${existingMessage.skullboardMessageId || ''}:`, error);
+                            return null;
                         });
-                        await updateSkullsCount(messageId, skullsCount);
-                    } else {
-                        // If skullboard message is deleted, create a new one if threshold is met
-                        if (skullsCount >= config.minSkulls) {
-                            await createNewSkullboardMessage(skullboardChannel, message, skullsCount);
+
+                        if (skullboardMessage) {
+                            LOGGER.info(`Updating skullboard message ${existingMessage.skullboardMessageId}`);
+                            const buttons = createButtons(message, guildId, skullsCount);
+                            await skullboardMessage.edit({
+                                components: [buttons]
+                            });
+                            await updateSkullsCount(messageId, skullsCount);
+                            // If skullboard message is deleted, create a new one if threshold is met
+                        } else if (skullsCount >= config.minSkulls) {
+                            LOGGER.info('Skullboard message was deleted, creating a new one');
+                            await createNewSkullboardMessage(skullboardChannel, message, guildId, skullsCount);
                         }
                     }
                 }
+                // Create new skullboard message if conditions met
+            } else {
+                LOGGER.info(`No existing skullboard entry for message ${messageId}`);
+                if (skullsCount >= config.minSkulls) {
+                    LOGGER.info(`Creating new skullboard entry for message ${messageId} with ${skullsCount} skulls`);
+                    await createNewSkullboardMessage(skullboardChannel, message, guildId, skullsCount);
+                } else {
+                    LOGGER.info(`Not creating skullboard entry: ${skullsCount} skulls is below threshold of ${config.minSkulls}`);
+                }
             }
-        } else {
-            // Create new skullboard message if conditions met
-            if (skullsCount >= config.minSkulls) {
-                await createNewSkullboardMessage(skullboardChannel, message, skullsCount);
-            }
+        } catch (error) {
+            LOGGER.error('Error processing reaction add event:', error);
         }
-    },
+    }
 });

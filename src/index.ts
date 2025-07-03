@@ -1,6 +1,6 @@
-import { Client } from "seyfert";
+import { Client } from 'seyfert';
 
 const client = new Client();
 
 await client.start();
-await client.uploadCommands()
+await client.uploadCommands();
