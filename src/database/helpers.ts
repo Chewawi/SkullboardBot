@@ -1,5 +1,6 @@
-import { eq } from "drizzle-orm";
-import { db, schema } from "./index";
+import { eq } from 'drizzle-orm';
+
+import { schema, db } from './index';
 
 export const skullboard = schema.skullboard;
 export const skullboardConfig = schema.skullboardConfig;
@@ -10,14 +11,15 @@ export const skullboardConfig = schema.skullboardConfig;
  * @param guildId - The ID of the guild to retrieve the configuration for.
  */
 export async function getSkullboardConfig(guildId: string) {
-    const [config] = await db.select().from(skullboardConfig).where(eq(skullboardConfig.guildId, guildId));
+    const result = await db.select().from(skullboardConfig).where(eq(skullboardConfig.guildId, guildId));
+    const config = result.at(0);
 
     // Return default configuration if none exists in the database
     if (!config) {
         return {
             guildId,
             skullboardChannelId: null,
-            minSkulls: 4,
+            minSkulls: 4
         };
     }
 
@@ -31,16 +33,24 @@ export async function getSkullboardConfig(guildId: string) {
  * @param minSkulls - The minimum number of skull reactions required.
  */
 export async function setSkullboardConfig(guildId: string, skullboardChannelId: string, minSkulls: number) {
-    const [existingConfig] = await db.select().from(skullboardConfig).where(eq(skullboardConfig.guildId, guildId));
+    const result = await db.select().from(skullboardConfig).where(eq(skullboardConfig.guildId, guildId));
+    const existingConfig = result.at(0);
 
     if (existingConfig) {
         // Update existing configuration
         await db.update(skullboardConfig)
-            .set({ skullboardChannelId, minSkulls })
+            .set({
+                skullboardChannelId,
+                minSkulls
+            })
             .where(eq(skullboardConfig.guildId, guildId));
     } else {
         // Insert new configuration
-        await db.insert(skullboardConfig).values({ guildId, skullboardChannelId, minSkulls });
+        await db.insert(skullboardConfig).values({
+            guildId,
+            skullboardChannelId,
+            minSkulls
+        });
     }
 }
 
@@ -74,6 +84,6 @@ export async function updateSkullsCount(messageId: string, skullsCount: number) 
  * @param messageId - The ID of the message to retrieve.
  */
 export async function getSkullboardMessage(messageId: string) {
-    const [message] = await db.select().from(skullboard).where(eq(skullboard.messageId, messageId));
-    return message;
+    const result = await db.select().from(skullboard).where(eq(skullboard.messageId, messageId));
+    return result.at(0) ?? null;
 }

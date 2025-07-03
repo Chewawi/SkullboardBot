@@ -5,8 +5,11 @@
     "db:push": "bunx drizzle-kit push"
   },
   "devDependencies": {
+    "@marcrock22/eslint": "github:marcrock22/eslintcf",
     "@types/bun": "^1.2.0",
-    "@types/node": "^22.10.7"
+    "@types/node": "^22.10.7",
+    "eslint": "^9.30.1",
+    "typescript-eslint": "^8.35.1"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
@@ -16,6 +19,6 @@
     "dotenv": "^16.4.7",
     "drizzle-kit": "^0.30.2",
     "drizzle-orm": "^0.38.4",
-    "seyfert": "^2.2.0"
+    "seyfert": "^3.2.4"
   }
 }
